@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 const Login = () => {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
@@ -56,12 +58,12 @@ const Login = () => {
         {/* Footer */}
         <div className="mt-6 text-center text-sm">
           <span className="text-zinc-500">New here? </span>
-          <a
-            href="#"
+          <Link
+            to="/signup"
             className="font-medium text-zinc-400 hover:text-zinc-400 underline-offset-4 hover:underline"
           >
             Join the ranks
-          </a>
+          </Link>
         </div>
       </div>
     </div>
