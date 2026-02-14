@@ -29,7 +29,7 @@ const Signup = () => {
             <input
               type="text"
               id="username"
-              placeholder="Thrall_123"
+              placeholder="@username"
               className="w-full rounded-lg border border-zinc-700 bg-transparent px-4 py-2.5 text-white placeholder-zinc-500 outline-none transition focus:border-zinc-600 focus:ring-1 focus:ring-zinc-600"
             />
           </div>
