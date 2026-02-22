@@ -22,9 +22,9 @@ func GithubCallback(c *gin.Context) {
 		return
 	}
 	code := c.Query("code")
-	googleCon := config.GithubConfig()
+	githubCon := config.GithubConfig()
 
-	token, err := googleCon.Exchange(context.Background(), code)
+	token, err := githubCon.Exchange(context.Background(), code)
 	if err != nil {
 		return
 	}
