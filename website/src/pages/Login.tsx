@@ -1,4 +1,4 @@
-import { Github } from "lucide-react"; // Optional: Install lucide-react or use an SVG
+import { Github } from "lucide-react";
 import { apiUrl } from "../utils/contants";
 
 const Login = () => {
