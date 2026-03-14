@@ -8,3 +8,8 @@ type User struct {
 	Avatar   string `json:"avatar"`
 	RepoUrl  string `json:"repo_url"`
 }
+
+type JwtPayload struct {
+	Id    int64
+	Email string
+}

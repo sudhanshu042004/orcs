@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/sudhanshu042004/orcs/database"
 	"github.com/sudhanshu042004/orcs/internal/auth"
 	"github.com/sudhanshu042004/orcs/pkg/config"
 	"golang.org/x/oauth2"
@@ -13,6 +14,8 @@ type App struct {
 
 func main() {
 	router := gin.Default()
+	database.ConnectDb()
+
 	router.Use(config.CorsMiddleware())
 
 	//health

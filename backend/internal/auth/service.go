@@ -2,18 +2,57 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sudhanshu042004/orcs/internal/repository"
 	"github.com/sudhanshu042004/orcs/pkg/config"
 )
+
+// json type
+type jsonType struct {
+	Login      string `json:"login"`
+	Avatar_url string `json:"avatar_url"`
+	Repos_url  string `json:"repos_url"`
+	Email      string `json:"email"`
+	Name       string `json:"name"`
+
+	Extra map[string]interface{} `json:"-"`
+}
+
+// json parse
+func (c *jsonType) jsonParse(data []byte) error {
+	type jsonTypeAlias jsonType
+	alias := (*jsonTypeAlias)(c)
+	if err := json.Unmarshal(data, alias); err != nil {
+		//	fmt.Printf("error occured while parsing data %s",err)
+		return err
+	}
+
+	var raw map[string]interface{}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	delete(raw, "username")
+	delete(raw, "name")
+	delete(raw, "email")
+	delete(raw, "avatar_url")
+	delete(raw, "repo_url")
+	c.Extra = raw
+
+	return nil
+
+}
 
 func GithubLogin(c *gin.Context) {
 	url := config.AppConfig.Config.AuthCodeURL("randomstate")
 	c.Status(303)
 	c.Redirect(303, url)
+
 }
 
 func GithubCallback(c *gin.Context) {
@@ -24,10 +63,13 @@ func GithubCallback(c *gin.Context) {
 	code := c.Query("code")
 	githubCon := config.GithubConfig()
 
+	//github token generation
 	token, err := githubCon.Exchange(context.Background(), code)
 	if err != nil {
 		return
 	}
+
+	//requesting userdata
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", "https://api.github.com/user", nil)
 	if err != nil {
@@ -45,6 +87,27 @@ func GithubCallback(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	log.Printf("user %s", userData)
+
+	//json conversion
+	var data jsonType
+	json.Unmarshal(userData, &data)
+	log.Printf("user data %s\n", userData)
+
+	//user creation
+	newUser, err := repository.CreateUser(data.Login, data.Name, data.Email, data.Avatar_url, data.Repos_url)
+	if err != nil {
+		c.AbortWithStatusJSON(500, "Something went wrong!!")
+		return
+	}
+
+	//token
+	tokenString, err := config.CreateToken(newUser.Id, newUser.Email)
+	if err != nil {
+		c.AbortWithStatusJSON(400, "error while assigning the token")
+		return
+	}
+
+	c.SetCookie("token", tokenString, 400, "/", "localhost", true, true)
+
 	c.Redirect(301, "http://localhost:5173")
 }
