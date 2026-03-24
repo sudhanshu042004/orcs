@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sudhanshu042004/orcs/internal/repository"
 	"github.com/sudhanshu042004/orcs/pkg/config"
+	"github.com/sudhanshu042004/orcs/types"
 )
 
 // json type
@@ -93,6 +94,19 @@ func GithubCallback(c *gin.Context) {
 	json.Unmarshal(userData, &data)
 	log.Printf("user data %s\n", userData)
 
+	//check existing user
+	existingUser, err := repository.FindUser(data.Email)
+	if err != nil {
+		log.Fatalf("%s", err.Error())
+		c.AbortWithStatusJSON(500, "Server went up while finding user!!")
+		return
+	}
+
+	if existingUser != (types.User{}) {
+		config.SetCookie(existingUser.Id, existingUser.Name, c)
+		return
+	}
+
 	//user creation
 	newUser, err := repository.CreateUser(data.Login, data.Name, data.Email, data.Avatar_url, data.Repos_url)
 	if err != nil {
@@ -100,14 +114,7 @@ func GithubCallback(c *gin.Context) {
 		return
 	}
 
-	//token
-	tokenString, err := config.CreateToken(newUser.Id, newUser.Email)
-	if err != nil {
-		c.AbortWithStatusJSON(400, "error while assigning the token")
-		return
-	}
+	config.SetCookie(newUser.Id, newUser.Email, c)
 
-	c.SetCookie("token", tokenString, 400, "/", "localhost", true, true)
-
-	c.Redirect(301, "http://localhost:5173")
+	return
 }

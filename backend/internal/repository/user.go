@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"database/sql"
 	"fmt"
 
 	"github.com/sudhanshu042004/orcs/database"
@@ -24,6 +25,10 @@ func FindUser(email string) (types.User, error) {
 	q := `SELECT username,name,avatar,id,repo_url FROM users WHERE email = $1`
 
 	err := database.DB.QueryRow(q, email).Scan(&existingUser.Username, &existingUser.Name, &existingUser.Avatar, &existingUser.Id, &existingUser.RepoUrl)
+
+	if err == sql.ErrNoRows {
+		return types.User{}, nil
+	}
 	if err != nil {
 		return types.User{}, err
 	}

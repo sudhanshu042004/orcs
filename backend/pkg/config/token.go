@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/sudhanshu042004/orcs/types"
 )
@@ -57,4 +58,16 @@ func VerifyToken(tokenString string) (types.JwtPayload, error) {
 	}
 
 	return types.JwtPayload{Email: userEmail, Id: userId}, nil
+}
+
+func SetCookie(id int64, email string, c *gin.Context) {
+	tokenString, err := CreateToken(id, email)
+	if err != nil {
+		c.AbortWithStatusJSON(400, "error while assigning the token")
+		return
+	}
+
+	c.SetCookie("orcsAuth", tokenString, 400, "/", "localhost", true, true)
+	frontend_route := os.Getenv("FRONTEND_ROUTE")
+	c.Redirect(301, frontend_route)
 }
