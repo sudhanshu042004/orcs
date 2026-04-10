@@ -67,7 +67,7 @@ func SetCookie(id int64, email string, c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("orcsAuth", tokenString, 400, "/", "localhost", true, true)
+	c.SetCookie("orcsAuth", tokenString, 4000, "/", "localhost", true, true)
 	frontend_route := os.Getenv("FRONTEND_ROUTE")
 	c.Redirect(301, frontend_route)
 }
