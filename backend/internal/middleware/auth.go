@@ -10,12 +10,13 @@ import (
 
 func AuthRequired() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		cookie, err := c.Cookie("orcsAuth")
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Unauthorized access"})
-			return
-		}
-		userInfo, err := config.VerifyToken(cookie)
+		cookie := c.Request.Cookies()
+		fmt.Printf("do we come here''' %s\n  ", cookie)
+		// if err != nil {
+		// 	c.JSON(http.StatusBadRequest, gin.H{"error": "Unauthorized access"})
+		// 	return
+		// }
+		userInfo, err := config.VerifyToken(cookie[0].Value)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "something went wrong!!"})
 			fmt.Printf("error came up %s", err)
