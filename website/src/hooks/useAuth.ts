@@ -1,30 +1,10 @@
-import { useEffect, useState } from "react";
-import { useUser } from "./useUser"
-import { apiUrl } from "../utils/contants";
+import { useContext } from "react";
+import { AuthContext } from "../context/AuthContext";
 
-export const useAuth = () =>{
-    const {user,addUser,removeUser,setUser} = useUser();
-    const [loading,setLoading] = useState(true);
-    
-    useEffect(()=>{
-        // fetching user data
-        async function fetching(){
-            try {
-                const res = await fetch(apiUrl + '/api/user');
-                const data = await res.json();
-                setUser(data)
-            } catch (error) {
-                
-            } finally {
-                setLoading(false)
-            }
-        }
-        fetching();
-    },[addUser]);
-
-    const logout = () =>{
-        removeUser();
-        //need to implement backend for this also
+export const useAuth = () => {
+    const context = useContext(AuthContext);
+    if (!context) {
+        throw new Error("useAuth must be used within an AuthProvider");
     }
-    return {user,logout,loading,setUser};
-}
+    return context;
+};
