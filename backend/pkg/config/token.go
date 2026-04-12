@@ -52,12 +52,12 @@ func VerifyToken(tokenString string) (types.JwtPayload, error) {
 	if !ok {
 		return types.JwtPayload{}, fmt.Errorf("email not found in token")
 	}
-	userId, ok := claims["id"].(int64)
+	userId, ok := claims["id"].(float64)
 	if !ok {
 		return types.JwtPayload{}, fmt.Errorf("id not found in token")
 	}
 
-	return types.JwtPayload{Email: userEmail, Id: userId}, nil
+	return types.JwtPayload{Email: userEmail, Id: int64(userId)}, nil
 }
 
 func SetCookie(id int64, email string, c *gin.Context) {
@@ -67,7 +67,7 @@ func SetCookie(id int64, email string, c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("orcsAuth", tokenString, 4000, "/", "localhost", true, true)
+	c.SetCookie("orcsAuth", tokenString, 4000, "/", "", false, true)
 	frontend_route := os.Getenv("FRONTEND_ROUTE")
 	c.Redirect(301, frontend_route)
 }
