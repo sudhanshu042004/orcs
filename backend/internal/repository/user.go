@@ -22,10 +22,9 @@ func CreateUser(username string, name string, email string, avatar string, repoU
 
 func FindUser(email string) (types.User, error) {
 	var existingUser types.User
-	q := `SELECT username,name,avatar,id,repo_url FROM users WHERE email = $1`
+	q := `SELECT username,name,avatar,id,repo_url,email FROM users WHERE email = $1`
 
-	err := database.DB.QueryRow(q, email).Scan(&existingUser.Username, &existingUser.Name, &existingUser.Avatar, &existingUser.Id, &existingUser.RepoUrl)
-
+	err := database.DB.QueryRow(q, email).Scan(&existingUser.Username, &existingUser.Name, &existingUser.Avatar, &existingUser.Id, &existingUser.RepoUrl, &existingUser.Email)
 	if err == sql.ErrNoRows {
 		return types.User{}, nil
 	}

@@ -1,7 +1,6 @@
 package user
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -9,7 +8,6 @@ import (
 )
 
 func GetUser(c *gin.Context) {
-	fmt.Println("this is the issue")
 	userEmail := c.MustGet("email").(string)
 
 	userData, err := repository.FindUser(userEmail)

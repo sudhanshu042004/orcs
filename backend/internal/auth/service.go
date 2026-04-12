@@ -103,7 +103,7 @@ func GithubCallback(c *gin.Context) {
 	}
 
 	if existingUser != (types.User{}) {
-		config.SetCookie(existingUser.Id, existingUser.Name, c)
+		config.SetCookie(existingUser.Id, data.Email, c)
 		return
 	}
 
