@@ -34,3 +34,5 @@ func FindUser(email string) (types.User, error) {
 
 	return existingUser, nil
 }
+
+
