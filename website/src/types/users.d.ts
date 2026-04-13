@@ -2,5 +2,6 @@ interface User {
     id: number;
     name: string;
     email: string;
-    authToken: string;
+    avatar: string;
+    repo_url:string
 }
