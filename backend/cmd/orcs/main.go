@@ -33,5 +33,6 @@ func main() {
 
 	router.Use(middleware.AuthRequired())
 	router.GET("/api/user", user.GetUser)
+	router.GET("/api/repos")
 	router.Run(":3000")
 }
