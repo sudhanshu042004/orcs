@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sudhanshu042004/orcs/database"
 	"github.com/sudhanshu042004/orcs/internal/auth"
+	"github.com/sudhanshu042004/orcs/internal/files"
 	"github.com/sudhanshu042004/orcs/internal/middleware"
 	"github.com/sudhanshu042004/orcs/internal/user"
 	"github.com/sudhanshu042004/orcs/pkg/config"
@@ -33,6 +34,6 @@ func main() {
 
 	router.Use(middleware.AuthRequired())
 	router.GET("/api/user", user.GetUser)
-	router.GET("/api/repos")
+	router.POST("/api/upload", files.FileUploadHandler)
 	router.Run(":3000")
 }
