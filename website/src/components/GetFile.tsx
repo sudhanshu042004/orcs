@@ -48,10 +48,10 @@ const GetFile = () => {
     const formdata = new FormData();
     selectedFiles.forEach((item, i) => {
       formdata.append(`filesgrp[${i}][name]`, item.name);
-      formdata.append(`filesgrp[${i}[path]]`, item.path);
+      formdata.append(`filesgrp[${i}][path]`, item.path);
 
       item.files.forEach((file) => {
-        formdata.append(`filesgrp[${i}][file]`, file);
+        formdata.append(`filesgrp[${i}][files]`, file);
       });
     });
 
