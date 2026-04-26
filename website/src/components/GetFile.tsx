@@ -9,15 +9,23 @@ declare module "react" {
   }
 }
 
-interface SelectedFile {
+type file = {
   name: string;
-  path: string;
-  files: File[];
-}
+  type: "File";
+  content: File;
+};
+
+type Folder = {
+  name: string;
+  type: "Folder";
+  Children: Node[];
+};
+
+type Node = file | Folder;
 
 const GetFile = () => {
   const directoryRef = useRef<HTMLInputElement>(null);
-  const [selectedFiles, setSelectedFiles] = useState<SelectedFile[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<Node>();
   const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
@@ -27,17 +35,100 @@ const GetFile = () => {
     }
   }, []);
 
+  function createSubDirectories(
+    path: string[],
+    currentParent: Folder,
+    file: File,
+  ) {
+    for (let i = 0; i < path.length; i++) {
+      const existingNode = currentParent.Children.find(
+        (node) => node.name == path[i],
+      );
+
+      if (existingNode && existingNode.type == "Folder") {
+        currentParent = existingNode;
+        continue;
+      }
+      const newParentNode: Folder = {
+        name: path[i],
+        type: "Folder",
+        Children: [],
+      };
+      currentParent.Children.push(newParentNode);
+      currentParent = newParentNode;
+    }
+    currentParent.Children.push({
+      name: file.name,
+      type: "File",
+      content: file,
+    });
+    return;
+  }
+
+  function appendToFormData(
+    node: Node,
+    formData: FormData,
+    currentPath: string = "",
+  ) {
+    if (node.type === "File") {
+      const fullPath = currentPath + node.name;
+
+      formData.append(`${fullPath}`, node.content);
+    }
+
+    if (node.type === "Folder") {
+      const newPath = currentPath + node.name + "/";
+
+      for (const child of node.Children) {
+        appendToFormData(child, formData, newPath);
+      }
+    }
+  }
+
+  function updateSelectedFile(
+    parentNode: Folder,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    let length = e.target?.files?.length;
+    let fileList = e.target.files;
+    if (!fileList) {
+      return null;
+    }
+
+    for (let i = 0; i < length!; i++) {
+      let path = fileList[i].webkitRelativePath.split("/");
+      let name = path.pop();
+      if (!name) {
+        break;
+      } // remove current file
+      path.shift(); // remove already created parent
+
+      if (path.length == 0) {
+        let currentNode: file = {
+          name: name,
+          type: "File",
+          content: fileList[i],
+        };
+        parentNode.Children.push(currentNode);
+      } else {
+        createSubDirectories(path, parentNode, fileList[i]);
+      }
+    }
+  }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const files = Array.from(e.target.files);
       const folderName =
         files[0].webkitRelativePath.split("/")[0] || "Selected folder";
-      setSelectedFiles([{ name: folderName, path: "", files }]);
+      let parentNode: Node = { name: folderName, type: "Folder", Children: [] };
+      updateSelectedFile(parentNode, e);
+      setSelectedFiles(parentNode);
     }
   };
 
   const clearFiles = () => {
-    setSelectedFiles([]);
+    setSelectedFiles(undefined);
     if (directoryRef.current) {
       directoryRef.current.value = "";
     }
@@ -45,17 +136,12 @@ const GetFile = () => {
 
   /**  handle the folder data uplaod  */
   const handleFileuplaod = async () => {
-    const formdata = new FormData();
-    selectedFiles.forEach((item, i) => {
-      formdata.append(`filesgrp[${i}][name]`, item.name);
-      formdata.append(`filesgrp[${i}][path]`, item.path);
-
-      item.files.forEach((file) => {
-        formdata.append(`filesgrp[${i}][files]`, file);
-      });
-    });
-
-    await post("api/upload", formdata);
+    const formData = new FormData();
+    appendToFormData(selectedFiles!, formData);
+    for (let [key, value] of formData.entries()) {
+      console.log(key, value);
+    }
+    await post("api/upload", formData);
   };
 
   return (
@@ -106,12 +192,12 @@ const GetFile = () => {
       </div>
 
       {/* Selected folder display */}
-      {selectedFiles.length > 0 && (
+      {selectedFiles && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-white/50">
-              {selectedFiles[0].files.length} files selected
-            </p>
+            {/* <p className="text-xs font-medium text-white/50">
+              {selectedFiles?.files.length} files selected
+            </p> */}
             <button
               onClick={clearFiles}
               className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-white/40 hover:bg-white/10 hover:text-white/70 transition-all"
@@ -126,18 +212,18 @@ const GetFile = () => {
             </div>
             <div className="flex-1 min-w-0">
               <p className="truncate text-sm font-medium text-white/80">
-                {selectedFiles[0].name}
+                {selectedFiles?.name}
               </p>
-              <p className="text-xs text-white/40">
-                {selectedFiles[0].files.length} files
-              </p>
+              {/* <p className="text-xs text-white/40">
+                {selectedFiles?.files.length} files
+              </p> */}
             </div>
           </div>
         </div>
       )}
 
       {/* Upload button */}
-      {selectedFiles.length > 0 && (
+      {selectedFiles && (
         <button
           onClick={handleFileuplaod}
           className="w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black transition-all hover:bg-white/90 active:scale-[0.99]"
