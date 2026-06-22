@@ -7,6 +7,7 @@ import (
 	"github.com/sudhanshu042004/orcs/internal/files"
 	"github.com/sudhanshu042004/orcs/internal/middleware"
 	"github.com/sudhanshu042004/orcs/internal/user"
+	githubrepo "github.com/sudhanshu042004/orcs/internal/github-repo"
 	"github.com/sudhanshu042004/orcs/pkg/config"
 	"golang.org/x/oauth2"
 )
@@ -34,6 +35,8 @@ func main() {
 
 	router.Use(middleware.AuthRequired())
 	router.GET("/api/user", user.GetUser)
+	router.GET("/repos", githubrepo.GetRepos)
+	router.POST("/projects/clone", githubrepo.CloneRepo)
 	router.POST("/api/upload", files.FileUploadHandler)
 	router.Run(":3000")
 }
