@@ -6,7 +6,10 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 
 	_ "github.com/lib/pq"
 
@@ -35,5 +38,36 @@ func ConnectDb() {
 	} else {
 		DB = db
 		fmt.Println("Successfully connected to database!")
+		runMigrations(db)
+	}
+}
+
+func runMigrations(db *sql.DB) {
+	files, err := filepath.Glob("database/migrations/*.sql")
+	if err != nil {
+		slog.Warn("Failed to locate migration files", "error", err)
+		return
+	}
+	sort.Strings(files)
+
+	for _, file := range files {
+		if !strings.HasSuffix(file, ".up.sql") {
+			continue
+		}
+		content, err := os.ReadFile(file)
+		if err != nil {
+			slog.Warn("Failed to read migration file", "file", file, "error", err)
+			continue
+		}
+
+		_, err = db.Exec(string(content))
+		if err != nil {
+			if strings.Contains(err.Error(), "already exists") {
+				continue
+			}
+			slog.Error("Migration execution failed", "file", file, "error", err)
+			log.Fatal("Fatal migration error", err)
+		}
+		fmt.Printf("Migration successfully applied: %s\n", file)
 	}
 }

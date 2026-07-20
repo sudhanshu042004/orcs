@@ -115,11 +115,16 @@ const TreeNode = ({ node, depth = 0 }: { node: Node; depth?: number }) => {
 
 // --- Main Component ---
 
-const GetFile = () => {
+interface GetFileProps {
+  onUploadSuccess?: () => void;
+}
+
+const GetFile = ({ onUploadSuccess }: GetFileProps) => {
   const directoryRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<Node>();
   const [isDragging, setIsDragging] = useState(false);
   const [showTree, setShowTree] = useState(false);
+  const [projectName, setProjectName] = useState("");
 
   useEffect(() => {
     if (directoryRef.current) {
@@ -187,13 +192,19 @@ const GetFile = () => {
   const clearFiles = () => {
     setSelectedFiles(undefined);
     setShowTree(false);
+    setProjectName("");
     if (directoryRef.current) directoryRef.current.value = "";
   };
 
   const handleFileUpload = async () => {
     if (!selectedFiles) return;
+    if (!projectName.trim()) {
+      alert("Please enter a project name.");
+      return;
+    }
 
     const formData = new FormData();
+    formData.append("projectName", projectName.trim());
     const appendToFormData = (node: Node, currentPath: string = "") => {
       if (node.type === "File") {
         formData.append(`${currentPath}${node.name}`, node.content);
@@ -208,6 +219,7 @@ const GetFile = () => {
     try {
       await post("api/upload", formData);
       alert("Upload successful!");
+      if (onUploadSuccess) onUploadSuccess();
     } catch (error) {
       console.error("Upload failed", error);
     }
@@ -266,6 +278,18 @@ const GetFile = () => {
               <X className="size-3" />
               Reset
             </button>
+          </div>
+
+          {/* Project Name Input */}
+          <div className="space-y-1.5 text-left">
+            <label className="text-xs font-medium text-white/50">Project Name</label>
+            <input
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="Enter a project name..."
+              className="w-full rounded-lg border border-white/10 bg-white/5 px-3.5 py-2 text-sm text-white placeholder-white/20 focus:border-indigo-500 focus:outline-none"
+            />
           </div>
 
           {!showTree ? (

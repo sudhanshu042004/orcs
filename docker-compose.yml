@@ -40,6 +40,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/database/migrations/000001_init_mg.up.sql:/docker-entrypoint-initdb.d/000001_init_mg.up.sql
       - ./backend/database/migrations/000002_update_user_table.up.sql:/docker-entrypoint-initdb.d/000002_update_user_table.up.sql
+      - ./backend/database/migrations/000003_deployment.up.sql:/docker-entrypoint-initdb.d/000003_deployment.up.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d orcs"]
       interval: 5s

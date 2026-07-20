@@ -1,5 +1,7 @@
 FROM golang:1.26
 
+RUN apt-get update && apt-get install -y nodejs npm
+
 WORKDIR /app
 
 RUN go install github.com/air-verse/air@latest

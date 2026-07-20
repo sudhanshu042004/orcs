@@ -24,7 +24,11 @@ const languageColors: Record<string, string> = {
   Java: 'bg-red-500',
 };
 
-const GithubRepos = () => {
+interface GithubReposProps {
+  onDeploySuccess?: () => void;
+}
+
+const GithubRepos = ({ onDeploySuccess }: GithubReposProps) => {
   const [repos, setRepos] = useState<Repo[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +50,11 @@ const GithubRepos = () => {
     fetchRepos();
   }, []);
 
-  const handleClone = async (repoId: number, name: string, cloneUrl: string) => {
+  const handleDeploy = async (repoId: number, name: string, cloneUrl: string) => {
     setCloningRepoId(repoId);
     setCloneStatus((prev) => ({ ...prev, [repoId]: {} }));
     try {
-      const res = await post<{ message: string; path: string }>('projects/clone', {
+      const res = await post<{ message: string; path: string }>('projects/deploy', {
         name,
         clone_url: cloneUrl,
       });
@@ -58,10 +62,13 @@ const GithubRepos = () => {
         ...prev,
         [repoId]: { success: true, path: res.path },
       }));
+      if (onDeploySuccess) {
+        onDeploySuccess();
+      }
     } catch (err: any) {
       setCloneStatus((prev) => ({
         ...prev,
-        [repoId]: { error: err.message || 'Failed to clone repository' },
+        [repoId]: { error: err.message || 'Failed to deploy project' },
       }));
     } finally {
       setCloningRepoId(null);
@@ -86,69 +93,41 @@ const GithubRepos = () => {
           <p className="text-sm text-white/60">No repositories found for this user.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="divide-y divide-white/5 rounded-xl border border-white/10 bg-white/5 overflow-hidden">
           {repos.map((repo) => (
             <div
               key={repo.id}
-              className="group relative flex flex-col justify-between rounded-xl border border-white/10 bg-white/5 p-5 transition-all duration-300 hover:border-white/20 hover:bg-white/10 hover:shadow-lg hover:shadow-emerald-950/10"
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 transition-all duration-200 hover:bg-white/5"
             >
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <h4 className="font-semibold text-white/90 group-hover:text-white transition-colors truncate">
+              {/* Repository details */}
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-semibold text-white/90 truncate">
                     {repo.name}
                   </h4>
                   <a
                     href={repo.html_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex size-7 items-center justify-center rounded-lg bg-white/5 text-white/60 opacity-0 group-hover:opacity-100 hover:bg-white/10 hover:text-white transition-all duration-200"
+                    className="text-white/40 hover:text-white transition-colors animate-pulse-hover"
                     title="View on GitHub"
                   >
                     <ExternalLink className="size-3.5" />
                   </a>
                 </div>
-                
-                <p className="line-clamp-2 text-xs leading-relaxed text-white/50 min-h-[2rem]">
-                  {repo.description || "No description provided."}
-                </p>
-              </div>
-
-              <div className="mt-4">
-                {cloningRepoId === repo.id ? (
-                  <div className="flex items-center justify-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 py-2 text-xs text-emerald-400">
-                    <Loader2 className="size-3.5 animate-spin" />
-                    <span>Cloning into namespace...</span>
-                  </div>
-                ) : cloneStatus[repo.id]?.success ? (
-                  <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-2.5 text-center">
-                    <p className="text-[11px] font-medium text-emerald-400">Cloned successfully!</p>
-                    <p className="mt-0.5 text-[9px] text-white/40 truncate" title={cloneStatus[repo.id]?.path}>
-                      {cloneStatus[repo.id]?.path}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {cloneStatus[repo.id]?.error && (
-                      <p className="text-[10px] text-red-400 line-clamp-2 leading-tight">
-                        Error: {cloneStatus[repo.id]?.error}
-                      </p>
-                    )}
-                    <button
-                      onClick={() => handleClone(repo.id, repo.name, repo.html_url)}
-                      disabled={cloningRepoId !== null}
-                      className="w-full rounded-lg bg-white/10 py-2 text-center text-xs font-medium text-white/80 transition-all hover:bg-white/20 active:scale-98 disabled:opacity-50 disabled:pointer-events-none"
-                    >
-                      Clone & Isolate
-                    </button>
-                  </div>
+                {repo.description && (
+                  <p className="text-xs text-white/40 truncate max-w-lg">
+                    {repo.description}
+                  </p>
                 )}
               </div>
 
-              <div className="mt-4 flex items-center justify-between text-xs text-white/40 border-t border-white/5 pt-3">
-                <div className="flex items-center gap-1.5">
+              {/* Stats & Language */}
+              <div className="flex items-center gap-6 text-xs text-white/40">
+                <div className="flex items-center gap-1.5 min-w-[90px]">
                   {repo.language ? (
                     <>
-                      <span className={`size-2.5 rounded-full ${languageColors[repo.language] || 'bg-white/30'}`} />
+                      <span className={`size-2 rounded-full ${languageColors[repo.language] || 'bg-white/30'}`} />
                       <span>{repo.language}</span>
                     </>
                   ) : (
@@ -169,6 +148,40 @@ const GithubRepos = () => {
                     {repo.forks_count}
                   </span>
                 </div>
+              </div>
+
+              {/* Action / Deployment status */}
+              <div className="sm:min-w-[180px] text-left sm:text-right">
+                {cloningRepoId === repo.id ? (
+                  <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5 text-xs text-emerald-400">
+                    <Loader2 className="size-3 animate-spin" />
+                    <span>Deploying...</span>
+                  </div>
+                ) : cloneStatus[repo.id]?.success ? (
+                  <div>
+                    <span className="inline-block rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                      Success
+                    </span>
+                    <p className="mt-1 text-[9px] text-white/30 truncate max-w-[180px]" title={cloneStatus[repo.id]?.path}>
+                      {cloneStatus[repo.id]?.path}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-start sm:items-end gap-1">
+                    {cloneStatus[repo.id]?.error && (
+                      <p className="text-[10px] text-red-400 max-w-[180px] truncate leading-tight" title={cloneStatus[repo.id]?.error}>
+                        {cloneStatus[repo.id]?.error}
+                      </p>
+                    )}
+                    <button
+                      onClick={() => handleDeploy(repo.id, repo.name, repo.html_url)}
+                      disabled={cloningRepoId !== null}
+                      className="rounded-lg bg-white/10 px-4 py-1.5 text-xs font-medium text-white/80 transition-all hover:bg-white/20 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+                    >
+                      Deploy
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}

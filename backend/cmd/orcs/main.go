@@ -36,7 +36,9 @@ func main() {
 	router.Use(middleware.AuthRequired())
 	router.GET("/api/user", user.GetUser)
 	router.GET("/repos", githubrepo.GetRepos)
-	router.POST("/projects/clone", githubrepo.CloneRepo)
+	router.GET("/deployments", githubrepo.GetDeployments)
+	router.DELETE("/deployments/:id", githubrepo.DeleteDeployment)
+	router.POST("/projects/deploy", githubrepo.DeployRepo)
 	router.POST("/api/upload", files.FileUploadHandler)
 	router.Run(":3000")
 }
