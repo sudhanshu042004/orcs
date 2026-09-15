@@ -7,10 +7,15 @@ import (
 	"github.com/sudhanshu042004/orcs/types"
 )
 
-func CreateDeployment(userId int64, name string, repoUrl string, status string) (int64, error) {
+const deploymentColumns = `id, user_id, name, status, url, repo_url, stack, install_cmd, build_cmd, run_cmd, created_at`
+
+// CreateDeployment records a new deployment. It is always created in the 'queued' state -
+// the build itself is picked up later by a worker.
+func CreateDeployment(userId int64, d types.Deployment) (int64, error) {
 	var deploymentId int64
-	q := `INSERT INTO deployments(user_id, name, repo_url, status, url) VALUES($1, $2, $3, $4, '') RETURNING id`
-	err := database.DB.QueryRow(q, userId, name, repoUrl, status).Scan(&deploymentId)
+	q := `INSERT INTO deployments(user_id, name, repo_url, status, url, stack, install_cmd, build_cmd, run_cmd)
+	      VALUES($1, $2, $3, 'queued', '', $4, $5, $6, $7) RETURNING id`
+	err := database.DB.QueryRow(q, userId, d.Name, d.RepoUrl, d.Stack, d.InstallCmd, d.BuildCmd, d.RunCmd).Scan(&deploymentId)
 	if err != nil {
 		fmt.Printf("error while creating deployment %s\n", err.Error())
 		return 0, err
@@ -28,8 +33,21 @@ func UpdateDeploymentStatus(id int64, status string, url string) error {
 	return nil
 }
 
+func scanDeployment(scan func(dest ...any) error) (types.Deployment, error) {
+	var d types.Deployment
+	var t interface{}
+	err := scan(&d.Id, &d.UserId, &d.Name, &d.Status, &d.Url, &d.RepoUrl, &d.Stack, &d.InstallCmd, &d.BuildCmd, &d.RunCmd, &t)
+	if err != nil {
+		return types.Deployment{}, err
+	}
+	if t != nil {
+		d.CreatedAt = fmt.Sprintf("%v", t)
+	}
+	return d, nil
+}
+
 func GetDeployments(userId int64) ([]types.Deployment, error) {
-	q := `SELECT id, user_id, name, status, url, repo_url, created_at FROM deployments WHERE user_id = $1 ORDER BY created_at DESC`
+	q := `SELECT ` + deploymentColumns + ` FROM deployments WHERE user_id = $1 ORDER BY created_at DESC`
 	rows, err := database.DB.Query(q, userId)
 	if err != nil {
 		return nil, err
@@ -38,14 +56,9 @@ func GetDeployments(userId int64) ([]types.Deployment, error) {
 
 	deployments := []types.Deployment{}
 	for rows.Next() {
-		var d types.Deployment
-		var t interface{}
-		err := rows.Scan(&d.Id, &d.UserId, &d.Name, &d.Status, &d.Url, &d.RepoUrl, &t)
+		d, err := scanDeployment(rows.Scan)
 		if err != nil {
 			return nil, err
-		}
-		if t != nil {
-			d.CreatedAt = fmt.Sprintf("%v", t)
 		}
 		deployments = append(deployments, d)
 	}
@@ -57,21 +70,52 @@ func GetDeployments(userId int64) ([]types.Deployment, error) {
 }
 
 func GetDeployment(id int64, userId int64) (types.Deployment, error) {
-	var d types.Deployment
-	var t interface{}
-	q := `SELECT id, user_id, name, status, url, repo_url, created_at FROM deployments WHERE id = $1 AND user_id = $2`
-	err := database.DB.QueryRow(q, id, userId).Scan(&d.Id, &d.UserId, &d.Name, &d.Status, &d.Url, &d.RepoUrl, &t)
+	q := `SELECT ` + deploymentColumns + ` FROM deployments WHERE id = $1 AND user_id = $2`
+	return scanDeployment(database.DB.QueryRow(q, id, userId).Scan)
+}
+
+// GetQueuedDeployments returns every deployment still waiting for a worker, oldest first.
+// Used on startup to put jobs back on the queue after a restart.
+func GetQueuedDeployments() ([]types.Deployment, error) {
+	q := `SELECT ` + deploymentColumns + ` FROM deployments WHERE status = 'queued' ORDER BY created_at ASC`
+	rows, err := database.DB.Query(q)
 	if err != nil {
-		return types.Deployment{}, err
+		return nil, err
 	}
-	if t != nil {
-		d.CreatedAt = fmt.Sprintf("%v", t)
+	defer rows.Close()
+
+	deployments := []types.Deployment{}
+	for rows.Next() {
+		d, err := scanDeployment(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		deployments = append(deployments, d)
 	}
-	return d, nil
+	return deployments, rows.Err()
 }
 
 func DeleteDeployment(id int64, userId int64) error {
 	q := `DELETE FROM deployments WHERE id = $1 AND user_id = $2`
 	_, err := database.DB.Exec(q, id, userId)
+	return err
+}
+
+func SaveDeploymentContainer(depId int64, containerId string) error {
+	q := `INSERT INTO deployment_containers(deployment_id, container_id) VALUES($1, $2)`
+	_, err := database.DB.Exec(q, depId, containerId)
+	return err
+}
+
+func GetDeploymentContainer(depId int64) (string, error) {
+	var containerId string
+	q := `SELECT container_id FROM deployment_containers WHERE deployment_id = $1`
+	err := database.DB.QueryRow(q, depId).Scan(&containerId)
+	return containerId, err
+}
+
+func DeleteDeploymentContainer(depId int64) error {
+	q := `DELETE FROM deployment_containers WHERE deployment_id = $1`
+	_, err := database.DB.Exec(q, depId)
 	return err
 }

@@ -19,12 +19,20 @@ services:
       - "3000:3000"
     volumes:
       - ./backend:/app
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - HOST=db
+      - AWS_S3_ENDPOINT=http://minio:9000
+      - AWS_S3_BUCKET=orcs-deployments
+      - AWS_ACCESS_KEY_ID=minioadmin
+      - AWS_SECRET_ACCESS_KEY=minioadmin
+      - AWS_REGION=us-east-1
     privileged: true
     depends_on:
       db:
         condition: service_healthy
+      minio:
+        condition: service_started
 
   db:
     image: postgres
@@ -41,11 +49,27 @@ services:
       - ./backend/database/migrations/000001_init_mg.up.sql:/docker-entrypoint-initdb.d/000001_init_mg.up.sql
       - ./backend/database/migrations/000002_update_user_table.up.sql:/docker-entrypoint-initdb.d/000002_update_user_table.up.sql
       - ./backend/database/migrations/000003_deployment.up.sql:/docker-entrypoint-initdb.d/000003_deployment.up.sql
+      - ./backend/database/migrations/000004_deployment_container.up.sql:/docker-entrypoint-initdb.d/000004_deployment_container.up.sql
+      - ./backend/database/migrations/000005_deployment_config.up.sql:/docker-entrypoint-initdb.d/000005_deployment_config.up.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d orcs"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio
+    container_name: orcs_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+
 volumes:
   postgres_data:
+  minio_data:

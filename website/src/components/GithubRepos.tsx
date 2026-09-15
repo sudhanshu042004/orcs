@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
-import { get, post } from '@/utils/api';
-import { Loader2, FolderGit2, Star, GitFork, ExternalLink, Code } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { get } from '@/utils/api';
+import { Loader2, FolderGit2, Star, GitFork, ExternalLink, Code, ArrowRight } from 'lucide-react';
 
 interface Repo {
   id: number;
   name: string;
   description: string | null;
   html_url: string;
+  clone_url: string;
   stargazers_count: number;
   forks_count: number;
   language: string | null;
@@ -24,24 +26,19 @@ const languageColors: Record<string, string> = {
   Java: 'bg-red-500',
 };
 
-interface GithubReposProps {
-  onDeploySuccess?: () => void;
-}
-
-const GithubRepos = ({ onDeploySuccess }: GithubReposProps) => {
+const GithubRepos = () => {
+  const navigate = useNavigate();
   const [repos, setRepos] = useState<Repo[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [cloningRepoId, setCloningRepoId] = useState<number | null>(null);
-  const [cloneStatus, setCloneStatus] = useState<Record<number, { success?: boolean; error?: string; path?: string }>>({});
 
   useEffect(() => {
     const fetchRepos = async () => {
       try {
         const response = await get<Repo[]>('repos');
         setRepos(response);
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch repositories');
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch repositories');
       } finally {
         setLoading(false);
       }
@@ -50,29 +47,13 @@ const GithubRepos = ({ onDeploySuccess }: GithubReposProps) => {
     fetchRepos();
   }, []);
 
-  const handleDeploy = async (repoId: number, name: string, cloneUrl: string) => {
-    setCloningRepoId(repoId);
-    setCloneStatus((prev) => ({ ...prev, [repoId]: {} }));
-    try {
-      const res = await post<{ message: string; path: string }>('projects/deploy', {
-        name,
-        clone_url: cloneUrl,
-      });
-      setCloneStatus((prev) => ({
-        ...prev,
-        [repoId]: { success: true, path: res.path },
-      }));
-      if (onDeploySuccess) {
-        onDeploySuccess();
-      }
-    } catch (err: any) {
-      setCloneStatus((prev) => ({
-        ...prev,
-        [repoId]: { error: err.message || 'Failed to deploy project' },
-      }));
-    } finally {
-      setCloningRepoId(null);
-    }
+  // Picking a repo never deploys straight away - it opens the deploy configuration form
+  const handleSelect = (repo: Repo) => {
+    const params = new URLSearchParams({
+      name: repo.name,
+      repo_url: repo.clone_url || repo.html_url,
+    });
+    navigate(`/dashboard/deploy?${params.toString()}`);
   };
 
   return (
@@ -109,7 +90,7 @@ const GithubRepos = ({ onDeploySuccess }: GithubReposProps) => {
                     href={repo.html_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-white/40 hover:text-white transition-colors animate-pulse-hover"
+                    className="text-white/40 hover:text-white transition-colors"
                     title="View on GitHub"
                   >
                     <ExternalLink className="size-3.5" />
@@ -150,38 +131,15 @@ const GithubRepos = ({ onDeploySuccess }: GithubReposProps) => {
                 </div>
               </div>
 
-              {/* Action / Deployment status */}
-              <div className="sm:min-w-[180px] text-left sm:text-right">
-                {cloningRepoId === repo.id ? (
-                  <div className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5 text-xs text-emerald-400">
-                    <Loader2 className="size-3 animate-spin" />
-                    <span>Deploying...</span>
-                  </div>
-                ) : cloneStatus[repo.id]?.success ? (
-                  <div>
-                    <span className="inline-block rounded-md bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-medium text-emerald-400">
-                      Success
-                    </span>
-                    <p className="mt-1 text-[9px] text-white/30 truncate max-w-[180px]" title={cloneStatus[repo.id]?.path}>
-                      {cloneStatus[repo.id]?.path}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-start sm:items-end gap-1">
-                    {cloneStatus[repo.id]?.error && (
-                      <p className="text-[10px] text-red-400 max-w-[180px] truncate leading-tight" title={cloneStatus[repo.id]?.error}>
-                        {cloneStatus[repo.id]?.error}
-                      </p>
-                    )}
-                    <button
-                      onClick={() => handleDeploy(repo.id, repo.name, repo.html_url)}
-                      disabled={cloningRepoId !== null}
-                      className="rounded-lg bg-white/10 px-4 py-1.5 text-xs font-medium text-white/80 transition-all hover:bg-white/20 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
-                    >
-                      Deploy
-                    </button>
-                  </div>
-                )}
+              {/* Action */}
+              <div className="sm:min-w-[150px] text-left sm:text-right">
+                <button
+                  onClick={() => handleSelect(repo)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-4 py-1.5 text-xs font-medium text-white/80 transition-all hover:bg-white/20 active:scale-95"
+                >
+                  Configure
+                  <ArrowRight className="size-3" />
+                </button>
               </div>
             </div>
           ))}

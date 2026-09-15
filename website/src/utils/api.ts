@@ -32,7 +32,13 @@ async function api<T>(
   });
 
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    // Surface the server's own error message when it sends one
+    const message = await response
+      .json()
+      .then((data) => data?.error as string | undefined)
+      .catch(() => undefined);
+
+    throw new Error(message || `API Error: ${response.status} ${response.statusText}`);
   }
 
   return response.json() as Promise<T>;

@@ -4,10 +4,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/sudhanshu042004/orcs/database"
 	"github.com/sudhanshu042004/orcs/internal/auth"
-	"github.com/sudhanshu042004/orcs/internal/files"
+	githubrepo "github.com/sudhanshu042004/orcs/internal/github-repo"
 	"github.com/sudhanshu042004/orcs/internal/middleware"
 	"github.com/sudhanshu042004/orcs/internal/user"
-	githubrepo "github.com/sudhanshu042004/orcs/internal/github-repo"
+	"github.com/sudhanshu042004/orcs/internal/worker"
 	"github.com/sudhanshu042004/orcs/pkg/config"
 	"golang.org/x/oauth2"
 )
@@ -15,6 +15,9 @@ import (
 type App struct {
 	config *oauth2.Config
 }
+
+// buildWorkers is how many deployments can be built at the same time.
+const buildWorkers = 2
 
 func main() {
 	router := gin.Default()
@@ -28,17 +31,22 @@ func main() {
 			"success": "true",
 		})
 	})
-	//routes
-	config.GithubConfig()
-	router.GET("/login", auth.GithubLogin)
-	router.GET("/auth/callback", auth.GithubCallback)
 
-	router.Use(middleware.AuthRequired())
-	router.GET("/api/user", user.GetUser)
-	router.GET("/repos", githubrepo.GetRepos)
-	router.GET("/deployments", githubrepo.GetDeployments)
-	router.DELETE("/deployments/:id", githubrepo.DeleteDeployment)
-	router.POST("/projects/deploy", githubrepo.DeployRepo)
-	router.POST("/api/upload", files.FileUploadHandler)
+	config.GithubConfig()
+
+	// Build-job queue: workers pick deployments up from here, and anything still queued
+	// from a previous run is put back on the queue
+	worker.Start(buildWorkers)
+
+	// Auth routes
+	auth.RegisterRoutes(router.Group("/"))
+
+	// Protected routes
+	protected := router.Group("/")
+	protected.Use(middleware.AuthRequired())
+
+	user.RegisterRoutes(protected.Group("/api"))
+	githubrepo.RegisterRoutes(protected)
+
 	router.Run(":3000")
 }

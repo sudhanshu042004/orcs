@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   Upload, 
   FolderOpen, 
@@ -120,6 +121,7 @@ interface GetFileProps {
 }
 
 const GetFile = ({ onUploadSuccess }: GetFileProps) => {
+  const navigate = useNavigate();
   const directoryRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<Node>();
   const [isDragging, setIsDragging] = useState(false);
@@ -217,9 +219,9 @@ const GetFile = ({ onUploadSuccess }: GetFileProps) => {
     appendToFormData(selectedFiles);
     
     try {
-      await post("api/upload", formData);
-      alert("Upload successful!");
-      if (onUploadSuccess) onUploadSuccess();
+      const res = await post<{ deployment_id: number }>("api/upload", formData);
+      onUploadSuccess?.();
+      navigate(`/project/${res.deployment_id}`);
     } catch (error) {
       console.error("Upload failed", error);
     }
