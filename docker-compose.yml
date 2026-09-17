@@ -27,6 +27,11 @@ services:
       - AWS_ACCESS_KEY_ID=minioadmin
       - AWS_SECRET_ACCESS_KEY=minioadmin
       - AWS_REGION=us-east-1
+      - SITE_BASE_DOMAIN=localhost:3000
+      # Dynamic apps publish a port on the docker host, which the backend proxies to
+      - RUNTIME_HOST=host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     privileged: true
     depends_on:
       db:
@@ -51,6 +56,7 @@ services:
       - ./backend/database/migrations/000003_deployment.up.sql:/docker-entrypoint-initdb.d/000003_deployment.up.sql
       - ./backend/database/migrations/000004_deployment_container.up.sql:/docker-entrypoint-initdb.d/000004_deployment_container.up.sql
       - ./backend/database/migrations/000005_deployment_config.up.sql:/docker-entrypoint-initdb.d/000005_deployment_config.up.sql
+      - ./backend/database/migrations/000006_deployment_runtime.up.sql:/docker-entrypoint-initdb.d/000006_deployment_runtime.up.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d orcs"]
       interval: 5s
