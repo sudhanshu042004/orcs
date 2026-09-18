@@ -60,7 +60,7 @@ func VerifyToken(tokenString string) (types.JwtPayload, error) {
 	return types.JwtPayload{Email: userEmail, Id: int64(userId)}, nil
 }
 
-func SetCookie(id int64, email string, c *gin.Context) {
+func SetCookie(id int64, email string, redirectPath string, c *gin.Context) {
 	tokenString, err := CreateToken(id, email)
 	if err != nil {
 		c.AbortWithStatusJSON(400, "error while assigning the token")
@@ -69,5 +69,5 @@ func SetCookie(id int64, email string, c *gin.Context) {
 
 	c.SetCookie("orcsAuth", tokenString, 4000, "/", "", false, true)
 	frontend_route := os.Getenv("FRONTEND_ROUTE")
-	c.Redirect(301, frontend_route+"/dashboard")
+	c.Redirect(302, frontend_route+SafeRedirectPath(redirectPath))
 }

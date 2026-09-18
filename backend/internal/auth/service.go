@@ -50,15 +50,16 @@ func (c *jsonType) jsonParse(data []byte) error {
 }
 
 func GithubLogin(c *gin.Context) {
-	url := config.AppConfig.Config.AuthCodeURL("randomstate")
-	c.Status(303)
+	// carry the page the user was trying to reach through github and back
+	state := config.EncodeState(config.SafeRedirectPath(c.Query("callback")))
+	url := config.AppConfig.Config.AuthCodeURL(state)
 	c.Redirect(303, url)
 
 }
 
 func GithubCallback(c *gin.Context) {
-	state := c.Query("state")
-	if state != "randomstate" {
+	redirectPath, ok := config.DecodeState(c.Query("state"))
+	if !ok {
 		return
 	}
 	code := c.Query("code")
@@ -103,7 +104,7 @@ func GithubCallback(c *gin.Context) {
 	}
 
 	if existingUser != (types.User{}) {
-		config.SetCookie(existingUser.Id, data.Email, c)
+		config.SetCookie(existingUser.Id, data.Email, redirectPath, c)
 		return
 	}
 
@@ -114,7 +115,7 @@ func GithubCallback(c *gin.Context) {
 		return
 	}
 
-	config.SetCookie(newUser.Id, newUser.Email, c)
+	config.SetCookie(newUser.Id, newUser.Email, redirectPath, c)
 
 	return
 }

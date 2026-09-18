@@ -1,8 +1,9 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 
 const PrivateRoutes = () => {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -12,8 +13,16 @@ const PrivateRoutes = () => {
     );
   }
 
-  return user ? <Outlet /> : <Navigate to="/login" />;
+  if (user) {
+    return <Outlet />;
+  }
+
+  // remember where they were headed so login can send them back there
+  const callback = location.pathname + location.search;
+
+  return (
+    <Navigate to={`/login?callback=${encodeURIComponent(callback)}`} replace />
+  );
 };
 
 export default PrivateRoutes;
-
