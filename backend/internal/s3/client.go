@@ -4,12 +4,14 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"os"
 	"path"
 	"strings"
+	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -41,8 +43,25 @@ func loadSettings() settings {
 	}
 }
 
-// newClient builds an S3 client from the environment along with the resolved settings.
+// The client is built once and reused. Serving a deployed site reads an object per
+// request, and re-resolving the SDK config every time would be wasted work.
+var (
+	clientOnce sync.Once
+	sharedCli  *s3.Client
+	sharedSet  settings
+	sharedErr  error
+)
+
+// newClient returns the shared S3 client along with the resolved settings.
 func newClient(ctx context.Context) (*s3.Client, settings, error) {
+	clientOnce.Do(func() {
+		sharedCli, sharedSet, sharedErr = buildClient(ctx)
+	})
+	return sharedCli, sharedSet, sharedErr
+}
+
+// buildClient builds an S3 client from the environment along with the resolved settings.
+func buildClient(ctx context.Context) (*s3.Client, settings, error) {
 	set := loadSettings()
 	accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
 	secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
@@ -80,8 +99,9 @@ func newClient(ctx context.Context) (*s3.Client, settings, error) {
 	return client, set, nil
 }
 
-// ensureBucket creates the bucket if it is missing and makes its objects world readable,
-// so a deployed site can be opened straight from the returned URL.
+// ensureBucket creates the bucket if it is missing. The objects stay private - a deployed
+// site is read back through the site handler, which holds the credentials, rather than
+// straight from storage.
 func ensureBucket(ctx context.Context, client *s3.Client, set settings) error {
 	_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(set.bucket)})
 	if err != nil {
@@ -90,15 +110,6 @@ func ensureBucket(ctx context.Context, client *s3.Client, set settings) error {
 			return fmt.Errorf("failed to create bucket %q: %w", set.bucket, err)
 		}
 		fmt.Printf("[S3] Bucket %q successfully created!\n", set.bucket)
-	}
-
-	policy := fmt.Sprintf(`{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":["*"]},"Action":["s3:GetObject"],"Resource":["arn:aws:s3:::%s/*"]}]}`, set.bucket)
-	if _, err := client.PutBucketPolicy(ctx, &s3.PutBucketPolicyInput{
-		Bucket: aws.String(set.bucket),
-		Policy: aws.String(policy),
-	}); err != nil {
-		// Not fatal: the files are uploaded either way, they just may not be publicly readable
-		fmt.Printf("[S3] Warning: could not apply public-read policy to %q: %s\n", set.bucket, err.Error())
 	}
 
 	return nil
@@ -195,21 +206,6 @@ func UploadTarStream(ctx context.Context, r io.Reader, s3Prefix string, stripCom
 	return uploaded, nil
 }
 
-// PublicURL builds a browser reachable URL for an uploaded object.
-func PublicURL(key string) string {
-	set := loadSettings()
-	key = strings.TrimPrefix(key, "/")
-
-	if set.endpoint != "" {
-		// The browser cannot resolve docker network hostnames, so publish the host mapping
-		publicEndpoint := strings.TrimSuffix(set.endpoint, "/")
-		publicEndpoint = strings.Replace(publicEndpoint, "minio:9000", "localhost:9000", 1)
-		return fmt.Sprintf("%s/%s/%s", publicEndpoint, set.bucket, key)
-	}
-
-	return fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", set.bucket, set.region, key)
-}
-
 // Describe reports the object storage target this process will publish to. Used at startup
 // so a misconfigured endpoint is obvious before the first build finishes.
 func Describe() string {
@@ -257,4 +253,55 @@ func DeletePrefix(ctx context.Context, s3Prefix string) error {
 	}
 
 	return nil
+}
+
+// ErrNotFound means the key is not in the bucket. Serving a deployed site relies on
+// telling a missing file apart from storage being broken, so it can fall back to
+// index.html for one and report an error for the other.
+var ErrNotFound = errors.New("object not found")
+
+// Object is a stored file opened for reading. Body must be closed by the caller.
+type Object struct {
+	Body        io.ReadCloser
+	ContentType string
+	Size        int64
+	ETag        string
+}
+
+// GetObject opens one stored object for reading.
+func GetObject(ctx context.Context, key string) (*Object, error) {
+	client, set, err := newClient(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(set.bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		var noSuchKey *types.NoSuchKey
+		var notFound *types.NotFound
+		if errors.As(err, &noSuchKey) || errors.As(err, &notFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("failed to read %s: %w", key, err)
+	}
+
+	obj := &Object{Body: out.Body}
+	if out.ContentType != nil {
+		obj.ContentType = *out.ContentType
+	}
+	// Objects are uploaded with a content type, but one stored by an older build may
+	// not have one - fall back to the extension rather than letting the browser sniff.
+	if obj.ContentType == "" || obj.ContentType == "application/octet-stream" {
+		obj.ContentType = contentTypeFor(key)
+	}
+	if out.ContentLength != nil {
+		obj.Size = *out.ContentLength
+	}
+	if out.ETag != nil {
+		obj.ETag = *out.ETag
+	}
+	return obj, nil
 }

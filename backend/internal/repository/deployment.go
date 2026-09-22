@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"database/sql"
 	"fmt"
 
 	"github.com/sudhanshu042004/orcs/database"
@@ -105,6 +106,31 @@ func SaveDeploymentContainer(depId int64, containerId string) error {
 	q := `INSERT INTO deployment_containers(deployment_id, container_id) VALUES($1, $2)`
 	_, err := database.DB.Exec(q, depId, containerId)
 	return err
+}
+
+// SetDeploymentHostPort records the host port a running app's container was published on.
+func SetDeploymentHostPort(depId int64, hostPort int) error {
+	q := `UPDATE deployment_containers SET host_port = $1 WHERE deployment_id = $2`
+	_, err := database.DB.Exec(q, hostPort, depId)
+	return err
+}
+
+// GetDeploymentHostPort returns the host port a running deployment answers on. A zero port
+// means the deployment has no running container.
+func GetDeploymentHostPort(depId int64) (int, error) {
+	var hostPort sql.NullInt64
+	q := `SELECT host_port FROM deployment_containers WHERE deployment_id = $1`
+	if err := database.DB.QueryRow(q, depId).Scan(&hostPort); err != nil {
+		return 0, err
+	}
+	return int(hostPort.Int64), nil
+}
+
+// GetPublicDeployment looks a deployment up without scoping it to an owner. Deployed sites
+// are served to anyone who has the URL, so serving one cannot ask who is asking.
+func GetPublicDeployment(id int64) (types.Deployment, error) {
+	q := `SELECT ` + deploymentColumns + ` FROM deployments WHERE id = $1`
+	return scanDeployment(database.DB.QueryRow(q, id).Scan)
 }
 
 func GetDeploymentContainer(depId int64) (string, error) {
