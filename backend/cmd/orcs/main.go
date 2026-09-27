@@ -6,6 +6,7 @@ import (
 	"github.com/sudhanshu042004/orcs/internal/auth"
 	githubrepo "github.com/sudhanshu042004/orcs/internal/github-repo"
 	"github.com/sudhanshu042004/orcs/internal/middleware"
+	"github.com/sudhanshu042004/orcs/internal/site"
 	"github.com/sudhanshu042004/orcs/internal/user"
 	"github.com/sudhanshu042004/orcs/internal/worker"
 	"github.com/sudhanshu042004/orcs/pkg/config"
@@ -23,6 +24,9 @@ func main() {
 	router := gin.Default()
 	database.ConnectDb()
 
+	// Deployed sites are served on their own hosts (<id>.localhost:3000), so this runs
+	// ahead of the API routes and takes those requests before any of them match
+	router.Use(site.Middleware())
 	router.Use(config.CorsMiddleware())
 
 	//health
