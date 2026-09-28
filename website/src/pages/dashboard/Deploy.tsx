@@ -6,6 +6,7 @@ import { useProjects } from '@/hooks/useProjects';
 
 interface Stack {
   key: string;
+  kind: 'static' | 'dynamic';
   label: string;
   image: string;
   enabled: boolean;
@@ -13,6 +14,7 @@ interface Stack {
   install_cmd: string;
   build_cmd: string;
   run_cmd: string;
+  port: number;
 }
 
 const isValidRepoUrl = (value: string) => /^https?:\/\/.+\/.+/.test(value.trim());
@@ -61,12 +63,15 @@ const Deploy = () => {
   }, [stack]);
 
   const locked = stack?.locked ?? false;
+  // A dynamic stack keeps running after it is built, so it has to know how to start
+  const dynamic = stack?.kind === 'dynamic';
   const canDeploy =
     !!stack?.enabled &&
     name.trim().length > 0 &&
     isValidRepoUrl(repoUrl) &&
     installCmd.trim().length > 0 &&
     buildCmd.trim().length > 0 &&
+    (!dynamic || runCmd.trim().length > 0) &&
     !submitting;
 
   const handleDeploy = async () => {
@@ -107,7 +112,8 @@ const Deploy = () => {
       <div>
         <h2 className='text-xl font-semibold'>Configure deployment</h2>
         <p className='text-sm text-white/40'>
-          Tell us about the project. The build runs in a container and the site is published when it finishes.
+          Tell us about the project. The build runs in a container; a site is published as static files, an app
+          keeps running and is served from its container.
         </p>
       </div>
 
@@ -145,7 +151,7 @@ const Deploy = () => {
                 >
                   <span className='text-sm font-semibold'>{item.label}</span>
                   <span className='text-[10px] uppercase tracking-wider text-white/35'>
-                    {item.enabled ? 'Available' : 'Coming soon'}
+                    {item.enabled ? (item.kind === 'dynamic' ? 'Runs live' : 'Static site') : 'Coming soon'}
                   </span>
                 </button>
               );
@@ -197,7 +203,7 @@ const Deploy = () => {
           <h3 className='text-sm font-semibold'>Commands</h3>
           <p className='text-xs text-white/40'>
             {locked
-              ? `${stack?.label} projects always use the default install and build commands.`
+              ? `${stack?.label} projects always use their own commands.`
               : 'Commands run inside the build container, from the repository root.'}
           </p>
         </div>
@@ -232,16 +238,23 @@ const Deploy = () => {
 
         <div className='space-y-1.5'>
           <label className='text-xs font-medium text-white/50' htmlFor='run-cmd'>
-            Run command <span className='text-white/25'>(not needed for static builds)</span>
+            Run command{' '}
+            <span className='text-white/25'>{dynamic ? '(starts the app)' : '(not used by static builds)'}</span>
           </label>
           <input
             id='run-cmd'
             value={runCmd}
             disabled={locked}
-            placeholder={locked ? 'Not used - the built site is served as static files' : 'npm start'}
+            placeholder={dynamic ? 'npm start' : 'Not used - the built site is served as static files'}
             onChange={(e) => setRunCmd(e.target.value)}
             className={`${fieldClass} font-mono`}
           />
+          {dynamic && (
+            <p className='text-[11px] text-white/35'>
+              The container stays up and traffic is proxied to it. Listen on the port in{' '}
+              <code className='font-mono text-white/50'>$PORT</code> ({stack?.port ?? 3000}).
+            </p>
+          )}
         </div>
       </section>
 
