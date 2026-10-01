@@ -145,7 +145,8 @@ func CreateDeployment(ctx *gin.Context) {
 		return
 	}
 
-	// Locked stacks (React today) always build with their own commands
+	// A locked stack (React today) always builds with its own commands; everything else
+	// takes the commands the user configured on the deploy form
 	installCmd, buildCmd, runCmd := strings.TrimSpace(req.InstallCmd), strings.TrimSpace(req.BuildCmd), strings.TrimSpace(req.RunCmd)
 	if target.Locked {
 		installCmd, buildCmd, runCmd = target.InstallCmd, target.BuildCmd, target.RunCmd
@@ -154,8 +155,8 @@ func CreateDeployment(ctx *gin.Context) {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Install and build commands are required"})
 		return
 	}
-	// A static build is finished once its files are published, but a dynamic one has to
-	// be told how to start the app it just built
+	// A build that only publishes files is finished once they are uploaded; one that leaves
+	// an app running has to be told how to start it
 	if target.Kind == stack.KindDynamic && runCmd == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": target.Label + " projects need a run command"})
 		return

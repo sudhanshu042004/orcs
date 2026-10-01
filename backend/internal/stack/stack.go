@@ -30,8 +30,9 @@ type Stack struct {
 // defaultPort is what every dynamic stack is told to listen on, through $PORT.
 const defaultPort = 3000
 
-// supported lists every stack shown in the UI. Each one owns its commands, so picking a
-// project type on the deploy form is all it takes to configure the build.
+// supported lists every stack shown in the UI. Each one carries the commands it is built
+// with, so picking a project type on the deploy form is enough to configure a build; a
+// stack that is not Locked offers those commands as a starting point the user can edit.
 var supported = []Stack{
 	{
 		Key:        "react",
@@ -51,7 +52,7 @@ var supported = []Stack{
 		Label:      "Node",
 		Image:      "node:20-alpine",
 		Enabled:    true,
-		Locked:     true,
+		Locked:     false,
 		InstallCmd: "npm i",
 		// Plenty of node services have no build step at all
 		BuildCmd: "npm run build --if-present",
@@ -64,7 +65,7 @@ var supported = []Stack{
 		Label:      "Go",
 		Image:      "golang:1.26",
 		Enabled:    true,
-		Locked:     true,
+		Locked:     false,
 		InstallCmd: "go mod download",
 		BuildCmd:   "go build -o /tmp/server .",
 		RunCmd:     "/tmp/server",
@@ -76,7 +77,7 @@ var supported = []Stack{
 		Label:      "Rust",
 		Image:      "rust:latest",
 		Enabled:    true,
-		Locked:     true,
+		Locked:     false,
 		InstallCmd: "cargo fetch",
 		BuildCmd:   "cargo build --release",
 		// The release binary is already built, so this only starts it

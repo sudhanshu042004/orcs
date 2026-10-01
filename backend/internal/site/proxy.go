@@ -202,7 +202,7 @@ func Middleware() gin.HandlerFunc {
 			return
 		}
 		if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
-			c.String(http.StatusMethodNotAllowed, "a static site only answers GET")
+			c.String(http.StatusMethodNotAllowed, "this site only answers GET")
 			return
 		}
 

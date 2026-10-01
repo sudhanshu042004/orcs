@@ -133,7 +133,8 @@ func RunBuild(job queue.Job) {
 		return
 	}
 
-	// Locked stacks always build with their own commands, whatever was stored on the row
+	// A locked stack always builds with its own commands, whatever was stored on the row.
+	// Every other stack builds with the commands the user configured.
 	installCmd, buildCmd, runCmd := job.InstallCmd, job.BuildCmd, job.RunCmd
 	if target.Locked {
 		installCmd, buildCmd, runCmd = target.InstallCmd, target.BuildCmd, target.RunCmd
@@ -148,7 +149,7 @@ func RunBuild(job queue.Job) {
 		fail("Failed to mark deployment as pending: %s", err.Error())
 		return
 	}
-	logf("Picked up from build queue. Stack: %s (%s), %s deployment", target.Label, target.Image, target.Kind)
+	logf("Picked up from build queue. Stack: %s (%s)", target.Label, target.Image)
 
 	// 2. Create the build container
 	containerId, err = container.CreateBuildContainer(container.BuildSpec{
