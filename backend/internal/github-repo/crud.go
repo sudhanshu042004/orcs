@@ -1,7 +1,7 @@
 package githubrepo
 
 import (
-	"bufio"
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,7 +19,9 @@ import (
 	"github.com/sudhanshu042004/orcs/internal/queue"
 	"github.com/sudhanshu042004/orcs/internal/repository"
 	"github.com/sudhanshu042004/orcs/internal/s3"
+	"github.com/sudhanshu042004/orcs/internal/site"
 	"github.com/sudhanshu042004/orcs/internal/stack"
+	"github.com/sudhanshu042004/orcs/internal/worker"
 	"github.com/sudhanshu042004/orcs/types"
 )
 
@@ -144,13 +145,20 @@ func CreateDeployment(ctx *gin.Context) {
 		return
 	}
 
-	// Locked stacks (React today) always build with their own commands
+	// A locked stack (React today) always builds with its own commands; everything else
+	// takes the commands the user configured on the deploy form
 	installCmd, buildCmd, runCmd := strings.TrimSpace(req.InstallCmd), strings.TrimSpace(req.BuildCmd), strings.TrimSpace(req.RunCmd)
 	if target.Locked {
 		installCmd, buildCmd, runCmd = target.InstallCmd, target.BuildCmd, target.RunCmd
 	}
 	if installCmd == "" || buildCmd == "" {
 		ctx.JSON(http.StatusBadRequest, gin.H{"error": "Install and build commands are required"})
+		return
+	}
+	// A build that only publishes files is finished once they are uploaded; one that leaves
+	// an app running has to be told how to start it
+	if target.Kind == stack.KindDynamic && runCmd == "" {
+		ctx.JSON(http.StatusBadRequest, gin.H{"error": target.Label + " projects need a run command"})
 		return
 	}
 
@@ -188,6 +196,69 @@ func CreateDeployment(ctx *gin.Context) {
 	})
 }
 
+// streamPoll is how often a running build's log file and status are re-checked.
+const streamPoll = 500 * time.Millisecond
+
+// logTail follows one deployment's build log. The worker writes every line of a build to
+// that file as it happens, so tailing it both replays a finished build and follows a
+// running one. Nothing here talks to docker, so there is no gap between a job being picked
+// up and its container existing in which lines can be missed.
+type logTail struct {
+	path    string
+	file    *os.File
+	offset  int64
+	partial []byte
+}
+
+// next returns whatever lines were written since the last call. A line that is still being
+// written is held back until its newline arrives.
+func (t *logTail) next() []string {
+	if t.file == nil {
+		file, err := os.Open(t.path)
+		if err != nil {
+			// The worker has not started writing the log yet
+			return nil
+		}
+		t.file = file
+	}
+
+	// A rebuild truncates the log, so start it over rather than waiting past its end
+	if info, err := t.file.Stat(); err == nil && info.Size() < t.offset {
+		if _, err := t.file.Seek(0, io.SeekStart); err == nil {
+			t.offset = 0
+			t.partial = nil
+		}
+	}
+
+	var lines []string
+	buf := make([]byte, 32*1024)
+	for {
+		n, err := t.file.Read(buf)
+		if n > 0 {
+			t.offset += int64(n)
+			t.partial = append(t.partial, buf[:n]...)
+			for {
+				i := bytes.IndexByte(t.partial, '\n')
+				if i < 0 {
+					break
+				}
+				lines = append(lines, strings.TrimRight(string(t.partial[:i]), "\r"))
+				t.partial = t.partial[i+1:]
+			}
+		}
+		// A short read means the log is drained for now
+		if err != nil || n == 0 {
+			return lines
+		}
+	}
+}
+
+func (t *logTail) close() {
+	if t.file != nil {
+		_ = t.file.Close()
+	}
+}
+
 func StreamDeploymentLogs(ctx *gin.Context) {
 	depIdStr := ctx.Param("id")
 	depId, err := strconv.ParseInt(depIdStr, 10, 64)
@@ -207,18 +278,17 @@ func StreamDeploymentLogs(ctx *gin.Context) {
 		return
 	}
 
-	// 1. Fetch deployment details
 	dep, err := repository.GetDeployment(depId, userId)
 	if err != nil {
 		ctx.JSON(http.StatusNotFound, gin.H{"error": "Deployment not found"})
 		return
 	}
 
-	// Setup streaming headers
 	ctx.Header("Content-Type", "application/x-ndjson")
 	ctx.Header("Cache-Control", "no-cache")
 	ctx.Header("Connection", "keep-alive")
-	ctx.Header("Transfer-Encoding", "chunked")
+	// Proxies that buffer would hold the build log back until the build finished
+	ctx.Header("X-Accel-Buffering", "no")
 
 	flusher, ok := ctx.Writer.(http.Flusher)
 	if !ok {
@@ -226,20 +296,56 @@ func StreamDeploymentLogs(ctx *gin.Context) {
 		return
 	}
 
-	writeEvent := func(evt interface{}) {
-		_ = json.NewEncoder(ctx.Writer).Encode(evt)
+	// A write that fails means the client is gone, and the stream should stop
+	writeEvent := func(evt interface{}) bool {
+		if err := json.NewEncoder(ctx.Writer).Encode(evt); err != nil {
+			return false
+		}
 		flusher.Flush()
+		return true
 	}
 
-	// Write initial status event
-	writeEvent(gin.H{"type": "status", "status": dep.Status, "url": dep.Url})
+	writeStatus := func(d types.Deployment) bool {
+		return writeEvent(gin.H{
+			"type":     "status",
+			"status":   d.Status,
+			"url":      d.Url,
+			"name":     d.Name,
+			"repo_url": d.RepoUrl,
+		})
+	}
 
-	// 2. While the job is still waiting for a worker there is nothing to follow yet
-	for dep.Status == "queued" {
+	tail := &logTail{path: filepath.Join("uploads", "logs", fmt.Sprintf("%d.log", depId))}
+	defer tail.close()
+
+	drain := func() bool {
+		for _, line := range tail.next() {
+			if !writeEvent(gin.H{"type": "log", "text": line}) {
+				return false
+			}
+		}
+		return true
+	}
+
+	if !writeStatus(dep) {
+		return
+	}
+
+	for {
+		if !drain() {
+			return
+		}
+
+		// Once a build has finished, its whole log has been replayed and there is
+		// nothing further to follow
+		if dep.Status == worker.StatusDeployed || dep.Status == worker.StatusFailed {
+			return
+		}
+
 		select {
 		case <-ctx.Request.Context().Done():
 			return
-		case <-time.After(time.Second):
+		case <-time.After(streamPoll):
 		}
 
 		refreshed, err := repository.GetDeployment(depId, userId)
@@ -247,57 +353,15 @@ func StreamDeploymentLogs(ctx *gin.Context) {
 			return
 		}
 		if refreshed.Status != dep.Status {
-			writeEvent(gin.H{"type": "status", "status": refreshed.Status, "url": refreshed.Url})
-		}
-		dep = refreshed
-	}
-
-	// 3. Stream logs while the build container is alive
-	if dep.Status == "pending" {
-		// Look up the active container
-		containerId, err := repository.GetDeploymentContainer(depId)
-		if err == nil && containerId != "" {
-			// Container is active, stream docker logs
-			cmd := exec.Command("docker", "logs", "-f", containerId)
-			stdout, err := cmd.StdoutPipe()
-			if err == nil {
-				// Read stderr too by merging it
-				cmd.Stderr = cmd.Stdout
-
-				if err := cmd.Start(); err == nil {
-					// Clean up command if client disconnects
-					ctxDone := ctx.Request.Context().Done()
-					go func() {
-						<-ctxDone
-						if cmd.Process != nil {
-							_ = cmd.Process.Kill()
-						}
-					}()
-
-					scanner := bufio.NewScanner(stdout)
-					for scanner.Scan() {
-						writeEvent(gin.H{"type": "log", "text": scanner.Text()})
-					}
-					_ = cmd.Wait()
-				}
+			// Send the lines that go with the old status before announcing the new one
+			if !drain() {
+				return
+			}
+			dep = refreshed
+			if !writeStatus(dep) {
+				return
 			}
 		}
-	}
-
-	// Stream historical logs from the log file if they exist
-	logPath := filepath.Join("uploads", "logs", fmt.Sprintf("%d.log", depId))
-	if file, err := os.Open(logPath); err == nil {
-		defer file.Close()
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			writeEvent(gin.H{"type": "log", "text": scanner.Text()})
-		}
-	}
-
-	// Fetch final status
-	finalDep, err := repository.GetDeployment(depId, userId)
-	if err == nil {
-		writeEvent(gin.H{"type": "status", "status": finalDep.Status, "url": finalDep.Url})
 	}
 }
 
@@ -348,7 +412,9 @@ func DeleteDeployment(ctx *gin.Context) {
 		return
 	}
 
-	// 2. Remove the build container so no docker resources are left behind
+	// 2. Remove the container. For a dynamic deployment this is the running app, so the
+	// site handler is told to forget it rather than keep proxying to a dead port
+	site.Forget(depId)
 	containerId, err := repository.GetDeploymentContainer(depId)
 	if err != nil && err != sql.ErrNoRows {
 		fmt.Printf("Warning: failed to look up container for deployment %d: %s\n", depId, err.Error())

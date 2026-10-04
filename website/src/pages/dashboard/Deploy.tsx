@@ -6,6 +6,7 @@ import { useProjects } from '@/hooks/useProjects';
 
 interface Stack {
   key: string;
+  kind: 'static' | 'dynamic';
   label: string;
   image: string;
   enabled: boolean;
@@ -13,6 +14,7 @@ interface Stack {
   install_cmd: string;
   build_cmd: string;
   run_cmd: string;
+  port: number;
 }
 
 const isValidRepoUrl = (value: string) => /^https?:\/\/.+\/.+/.test(value.trim());
@@ -51,22 +53,25 @@ const Deploy = () => {
 
   const stack = useMemo(() => stacks.find((s) => s.key === selectedStack), [stacks, selectedStack]);
 
-  // A locked stack (React today) always deploys with its own commands
+  // Each project type comes with the commands it is usually built with. For a locked type
+  // (React today) those are what it deploys with; for the rest they are a starting point.
   useEffect(() => {
-    if (stack?.locked) {
-      setInstallCmd(stack.install_cmd);
-      setBuildCmd(stack.build_cmd);
-      setRunCmd(stack.run_cmd);
-    }
+    if (!stack) return;
+    setInstallCmd(stack.install_cmd);
+    setBuildCmd(stack.build_cmd);
+    setRunCmd(stack.run_cmd);
   }, [stack]);
 
   const locked = stack?.locked ?? false;
+  // A project type that leaves an app running has to be told how to start it
+  const needsRunCmd = stack?.kind === 'dynamic';
   const canDeploy =
     !!stack?.enabled &&
     name.trim().length > 0 &&
     isValidRepoUrl(repoUrl) &&
     installCmd.trim().length > 0 &&
     buildCmd.trim().length > 0 &&
+    (!needsRunCmd || runCmd.trim().length > 0) &&
     !submitting;
 
   const handleDeploy = async () => {
@@ -107,7 +112,8 @@ const Deploy = () => {
       <div>
         <h2 className='text-xl font-semibold'>Configure deployment</h2>
         <p className='text-sm text-white/40'>
-          Tell us about the project. The build runs in a container and the site is published when it finishes.
+          Tell us about the project. The build runs in a container, and the result is served at its own URL as
+          soon as it is ready.
         </p>
       </div>
 
@@ -144,8 +150,8 @@ const Deploy = () => {
                   } ${item.enabled ? '' : 'cursor-not-allowed opacity-40 hover:border-white/10'}`}
                 >
                   <span className='text-sm font-semibold'>{item.label}</span>
-                  <span className='text-[10px] uppercase tracking-wider text-white/35'>
-                    {item.enabled ? 'Available' : 'Coming soon'}
+                  <span className='w-full truncate text-[10px] uppercase tracking-wider text-white/35'>
+                    {item.enabled ? item.image : 'Coming soon'}
                   </span>
                 </button>
               );
@@ -197,8 +203,8 @@ const Deploy = () => {
           <h3 className='text-sm font-semibold'>Commands</h3>
           <p className='text-xs text-white/40'>
             {locked
-              ? `${stack?.label} projects always use the default install and build commands.`
-              : 'Commands run inside the build container, from the repository root.'}
+              ? `${stack?.label} projects always use their own commands.`
+              : 'Commands run inside the build container, from the repository root. Edit them to match your project.'}
           </p>
         </div>
 
@@ -232,16 +238,23 @@ const Deploy = () => {
 
         <div className='space-y-1.5'>
           <label className='text-xs font-medium text-white/50' htmlFor='run-cmd'>
-            Run command <span className='text-white/25'>(not needed for static builds)</span>
+            Run command{' '}
+            <span className='text-white/25'>{needsRunCmd ? '(starts the app)' : '(not needed here)'}</span>
           </label>
           <input
             id='run-cmd'
             value={runCmd}
             disabled={locked}
-            placeholder={locked ? 'Not used - the built site is served as static files' : 'npm start'}
+            placeholder={needsRunCmd ? 'npm start' : 'Not needed for this project type'}
             onChange={(e) => setRunCmd(e.target.value)}
             className={`${fieldClass} font-mono`}
           />
+          {needsRunCmd && (
+            <p className='text-[11px] text-white/35'>
+              The container stays up and traffic is proxied to it. Listen on the port in{' '}
+              <code className='font-mono text-white/50'>$PORT</code> ({stack?.port ?? 3000}).
+            </p>
+          )}
         </div>
       </section>
 

@@ -1,4 +1,13 @@
+import { useSearchParams } from "react-router-dom";
 import { apiUrl } from "../utils/contants";
+
+// only a path inside this app is allowed back, never an absolute or
+// protocol-relative url
+function safeCallback(callback: string | null) {
+  if (!callback || !callback.startsWith("/")) return null;
+  if (callback.startsWith("//") || callback.startsWith("/\\")) return null;
+  return callback;
+}
 
 function GithubMark({ className }: { className?: string }) {
   return (
@@ -12,8 +21,15 @@ function GithubMark({ className }: { className?: string }) {
 }
 
 const Login = () => {
+  const [searchParams] = useSearchParams();
+
   const handleGithubLogin = async () => {
-   return window.location.href = `${apiUrl + 'login'}`
+    const callback = safeCallback(searchParams.get("callback"));
+    const loginUrl = new URL("login", apiUrl);
+    if (callback) {
+      loginUrl.searchParams.set("callback", callback);
+    }
+    return (window.location.href = loginUrl.toString());
   };
 
   return (
